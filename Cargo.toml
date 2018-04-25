@@ -1,0 +1,9 @@
+[package]
+name = "flv_codec"
+version = "0.1.0"
+authors = ["Takeru Ohta <phjgt308@gmail.com>"]
+
+[dependencies]
+bytecodec = "0.2"
+byteorder = "1"
+trackable = "0.2"
