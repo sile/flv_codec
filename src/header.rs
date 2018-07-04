@@ -1,7 +1,7 @@
 use bytecodec::bytes::CopyableBytesDecoder;
 use bytecodec::combinator::Length;
 use bytecodec::padding::PaddingDecoder;
-use bytecodec::{ByteCount, Decode, Encode, Eos, Result, SizedEncode};
+use bytecodec::{ByteCount, Decode, Encode, Eos, ErrorKind, Result, SizedEncode};
 
 #[derive(Debug, Default, Clone)]
 pub struct FlvHeader {
@@ -14,6 +14,11 @@ pub struct FlvHeaderDecoder {
     bytes: CopyableBytesDecoder<[u8; 9]>,
     padding: Length<PaddingDecoder>,
 }
+impl FlvHeaderDecoder {
+    pub fn new() -> Result<Self> {
+        track_panic!(ErrorKind::Other, "unimplemented");
+    }
+}
 impl Decode for FlvHeaderDecoder {
     type Item = FlvHeader;
 
@@ -25,7 +30,7 @@ impl Decode for FlvHeaderDecoder {
         //         return Ok((offset, None));
         //     }
         // }
-        unimplemented!()
+        track_panic!(ErrorKind::Other, "unimplemented");
     }
 
     fn finish_decoding(&mut self) -> Result<Self::Item> {
