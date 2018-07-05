@@ -37,7 +37,9 @@ fn parse_tags<R: Read>(mut input: R) -> Result<(), Error> {
         }
         let tag = track!(decoder.decode_exact(peek.chain(&mut input)))?;
         println!("[[tags]]");
-        println!("{:?}", tag);
+        println!("type = {:?}", tag.tag_type());
+        println!("timestamp = {:?}", tag.timestamp());
+        println!("stream_id = {:?}", tag.stream_id());
         println!("");
     }
     Ok(())

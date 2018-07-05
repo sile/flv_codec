@@ -1,13 +1,12 @@
-use bytecodec::combinator::MaybeEos;
 use bytecodec::fixnum::U32beDecoder;
-use bytecodec::{ByteCount, Decode, DecodeExt, Eos, ErrorKind, Result};
+use bytecodec::{ByteCount, Decode, Eos, ErrorKind, Result};
 
 use {FlvTag, FlvTagDecoder};
 
 #[derive(Debug)]
 pub struct FlvBodyDecoder {
     is_head: bool,
-    tag: MaybeEos<FlvTagDecoder>,
+    tag: FlvTagDecoder,
     prev_tag_size: U32beDecoder,
 }
 impl FlvBodyDecoder {
@@ -19,13 +18,13 @@ impl Default for FlvBodyDecoder {
     fn default() -> Self {
         FlvBodyDecoder {
             is_head: true,
-            tag: FlvTagDecoder::default().maybe_eos(),
+            tag: FlvTagDecoder::default(),
             prev_tag_size: U32beDecoder::default(),
         }
     }
 }
 impl Decode for FlvBodyDecoder {
-    type Item = FlvTag;
+    type Item = FlvTag; // TODO: Option<FlvTag>
 
     fn decode(&mut self, buf: &[u8], eos: Eos) -> Result<usize> {
         let mut offset = 0;
