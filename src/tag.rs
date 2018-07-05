@@ -58,6 +58,12 @@ impl From<ScriptDataTag> for FlvTag {
 pub struct AudioTag {
     pub timestamp: Timestamp,
     pub stream_id: StreamId,
+    pub sound_format: SoundFormat,
+    pub sound_rate: SoundRate,
+    pub sound_size: SoundSize,
+    pub sound_type: SoundType,
+    pub aac_packet_type: Option<AacPacketType>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -132,7 +138,16 @@ impl Decode for FlvTagDecoder {
         let header = track!(self.header.finish_decoding())?;
         let data = track!(self.data.finish_decoding())?;
         let tag = match data {
-            TagData::Audio(_) => panic!(),
+            TagData::Audio(d) => FlvTag::from(AudioTag {
+                timestamp: header.timestamp,
+                stream_id: header.stream_id,
+                sound_format: d.sound_format,
+                sound_rate: d.sound_rate,
+                sound_size: d.sound_size,
+                sound_type: d.sound_type,
+                aac_packet_type: d.aac_packet_type,
+                data: d.data,
+            }),
             TagData::Video(d) => FlvTag::from(VideoTag {
                 timestamp: header.timestamp,
                 stream_id: header.stream_id,
@@ -247,7 +262,29 @@ enum TagData {
 }
 
 #[derive(Debug)]
-struct AudioTagData;
+struct AudioTagData {
+    pub sound_format: SoundFormat,
+    pub sound_rate: SoundRate,
+    pub sound_size: SoundSize,
+    pub sound_type: SoundType,
+    pub aac_packet_type: Option<AacPacketType>,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub enum AacPacketType {
+    SequenceHeader = 0,
+    Raw = 1,
+}
+impl AacPacketType {
+    fn from_u8(b: u8) -> Result<Self> {
+        Ok(match b {
+            0 => AacPacketType::SequenceHeader,
+            1 => AacPacketType::Raw,
+            _ => track_panic!(ErrorKind::InvalidInput, "Unknown aac packet type: {}", b),
+        })
+    }
+}
 
 #[derive(Debug)]
 pub enum SoundFormat {
@@ -264,6 +301,76 @@ pub enum SoundFormat {
     Speex = 11,
     Mp3_8khz = 14,
     DeviceSpecificSound = 15,
+}
+impl SoundFormat {
+    fn from_u8(b: u8) -> Result<Self> {
+        Ok(match b {
+            0 => SoundFormat::LinearPcmPlatformEndian,
+            1 => SoundFormat::Adpcm,
+            2 => SoundFormat::Mp3,
+            3 => SoundFormat::LinearPcmLittleEndian,
+            4 => SoundFormat::Nellymoser16khzMono,
+            5 => SoundFormat::Nellymoser8KhzMono,
+            6 => SoundFormat::Nellymoser,
+            7 => SoundFormat::G711AlawLogarithmicPcm,
+            8 => SoundFormat::G711MuLawLogarithmicPcm,
+            10 => SoundFormat::Aac,
+            11 => SoundFormat::Speex,
+            14 => SoundFormat::Mp3_8khz,
+            15 => SoundFormat::DeviceSpecificSound,
+            _ => track_panic!(ErrorKind::InvalidInput, "Unknown FLV sound format: {}", b),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum SoundRate {
+    // 5.5-kHz
+    Khz5 = 0,
+    Khz11 = 1,
+    Khz22 = 2,
+    Khz44 = 3,
+}
+impl SoundRate {
+    fn from_u8(b: u8) -> Result<Self> {
+        Ok(match b {
+            0 => SoundRate::Khz5,
+            1 => SoundRate::Khz11,
+            2 => SoundRate::Khz22,
+            3 => SoundRate::Khz44,
+            _ => track_panic!(ErrorKind::InvalidInput, "Unknown FLV sound rate: {}", b),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum SoundSize {
+    Bit8 = 0,
+    Bit16 = 1,
+}
+impl SoundSize {
+    fn from_bool(b: bool) -> Self {
+        if b {
+            SoundSize::Bit16
+        } else {
+            SoundSize::Bit8
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SoundType {
+    Mono = 0,
+    Stereo = 1,
+}
+impl SoundType {
+    fn from_bool(b: bool) -> Self {
+        if b {
+            SoundType::Stereo
+        } else {
+            SoundType::Mono
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -398,24 +505,60 @@ impl Default for TagDataDecoder {
 }
 
 #[derive(Debug, Default)]
-struct AudioTagDataDecoder {}
+struct AudioTagDataDecoder {
+    header: Peekable<U8Decoder>,
+    aac_packet_type: U8Decoder,
+    data: RemainingBytesDecoder,
+}
+impl AudioTagDataDecoder {
+    fn is_aac_packet(&self) -> bool {
+        self.header.peek().map_or(false, |&b| (b >> 4) == 10)
+    }
+}
 impl Decode for AudioTagDataDecoder {
     type Item = AudioTagData;
 
     fn decode(&mut self, buf: &[u8], eos: Eos) -> Result<usize> {
-        panic!()
+        let mut offset = 0;
+        bytecodec_try_decode!(self.header, offset, buf, eos);
+        if self.is_aac_packet() {
+            bytecodec_try_decode!(self.aac_packet_type, offset, buf, eos);
+        }
+        bytecodec_try_decode!(self.data, offset, buf, eos);
+        Ok(offset)
     }
 
     fn finish_decoding(&mut self) -> Result<Self::Item> {
-        panic!()
+        let b = track!(self.header.finish_decoding())?;
+        let sound_format = track!(SoundFormat::from_u8(b >> 4))?;
+        let sound_rate = track!(SoundRate::from_u8((b >> 2) & 0b11))?;
+        let sound_size = SoundSize::from_bool((b & 0b10) != 0);
+        let sound_type = SoundType::from_bool((b & 0b01) != 0);
+
+        let aac_packet_type = if let SoundFormat::Aac = sound_format {
+            let b = track!(self.aac_packet_type.finish_decoding())?;
+            Some(track!(AacPacketType::from_u8(b))?)
+        } else {
+            None
+        };
+
+        let data = track!(self.data.finish_decoding())?;
+        Ok(AudioTagData {
+            sound_format,
+            sound_rate,
+            sound_size,
+            sound_type,
+            aac_packet_type,
+            data,
+        })
     }
 
     fn is_idle(&self) -> bool {
-        panic!()
+        self.data.is_idle()
     }
 
     fn requiring_bytes(&self) -> ByteCount {
-        panic!()
+        ByteCount::Unknown
     }
 }
 
