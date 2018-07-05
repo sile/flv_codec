@@ -5,5 +5,4 @@ authors = ["Takeru Ohta <phjgt308@gmail.com>"]
 
 [dependencies]
 bytecodec = "0.4"
-byteorder = "1"
 trackable = "0.2"

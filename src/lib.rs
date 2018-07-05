@@ -1,8 +1,8 @@
+#[macro_use]
 extern crate bytecodec;
-extern crate byteorder;
 #[macro_use]
 extern crate trackable;
 
-pub use header::{FlvHeader, FlvHeaderDecoder, FlvHeaderEncoder};
+pub use header::{FlvHeader, FlvHeaderDecoder};
 
 mod header;
