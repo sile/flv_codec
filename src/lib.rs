@@ -3,12 +3,14 @@ extern crate bytecodec;
 #[macro_use]
 extern crate trackable;
 
-pub use body::FlvBodyDecoder;
-pub use header::{FlvHeader, FlvHeaderDecoder};
+pub use file::FileDecoder;
+pub use header::Header;
 pub use tag::{
-    AudioTag, FlvTag, FlvTagDecoder, ScriptDataTag, StreamId, TagType, Timestamp, VideoTag,
+    AacPacketType, AudioTag, AvcPacketType, CodecId, CompositionTimeOffset, FrameType,
+    ScriptDataTag, SoundFormat, SoundRate, SoundSize, SoundType, StreamId, Tag, TagDecoder,
+    TagType, Timestamp, VideoTag,
 };
 
-mod body;
+mod file;
 mod header;
 mod tag;

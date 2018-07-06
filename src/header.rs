@@ -12,29 +12,27 @@ const FLAG_AUDIO: u8 = 0b0000_0100;
 const FLAG_VIDEO: u8 = 0b0000_0001;
 
 #[derive(Debug, Default, Clone)]
-pub struct FlvHeader {
+pub struct Header {
     /// Whether audio tags are present in the FLV file.
     pub has_audio: bool,
 
     /// Whether video tags are present in the FLV file.
     pub has_video: bool,
 }
+impl Header {
+    pub const SIZE: usize = 9;
+}
 
 #[derive(Debug, Default)]
-pub struct FlvHeaderDecoder {
+pub struct HeaderDecoder {
     signature: CopyableBytesDecoder<[u8; 3]>,
     version: U8Decoder,
     flags: U8Decoder,
     data_offset: Peekable<U32beDecoder>,
     padding: Length<PaddingDecoder>,
 }
-impl FlvHeaderDecoder {
-    pub fn new() -> Self {
-        FlvHeaderDecoder::default()
-    }
-}
-impl Decode for FlvHeaderDecoder {
-    type Item = FlvHeader;
+impl Decode for HeaderDecoder {
+    type Item = Header;
 
     fn decode(&mut self, buf: &[u8], eos: Eos) -> Result<usize> {
         let mut offset = 0;
@@ -79,7 +77,7 @@ impl Decode for FlvHeaderDecoder {
         let _ = track!(self.padding.finish_decoding());
         track!(self.padding.set_expected_bytes(0))?;
 
-        Ok(FlvHeader {
+        Ok(Header {
             has_audio,
             has_video,
         })

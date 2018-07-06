@@ -8,49 +8,49 @@ const TAG_TYPE_VIDEO: u8 = 9;
 const TAG_TYPE_SCRIPT_DATA: u8 = 18;
 
 #[derive(Debug)]
-pub enum FlvTag {
+pub enum Tag {
     Audio(AudioTag),
     Video(VideoTag),
     ScriptData(ScriptDataTag),
 }
-impl FlvTag {
+impl Tag {
     pub fn tag_type(&self) -> TagType {
         match self {
-            FlvTag::Audio(_) => TagType::Audio,
-            FlvTag::Video(_) => TagType::Video,
-            FlvTag::ScriptData(_) => TagType::ScriptData,
+            Tag::Audio(_) => TagType::Audio,
+            Tag::Video(_) => TagType::Video,
+            Tag::ScriptData(_) => TagType::ScriptData,
         }
     }
 
     pub fn timestamp(&self) -> Timestamp {
         match self {
-            FlvTag::Audio(t) => t.timestamp,
-            FlvTag::Video(t) => t.timestamp,
-            FlvTag::ScriptData(t) => t.timestamp,
+            Tag::Audio(t) => t.timestamp,
+            Tag::Video(t) => t.timestamp,
+            Tag::ScriptData(t) => t.timestamp,
         }
     }
 
     pub fn stream_id(&self) -> StreamId {
         match self {
-            FlvTag::Audio(t) => t.stream_id,
-            FlvTag::Video(t) => t.stream_id,
-            FlvTag::ScriptData(t) => t.stream_id,
+            Tag::Audio(t) => t.stream_id,
+            Tag::Video(t) => t.stream_id,
+            Tag::ScriptData(t) => t.stream_id,
         }
     }
 }
-impl From<AudioTag> for FlvTag {
+impl From<AudioTag> for Tag {
     fn from(f: AudioTag) -> Self {
-        FlvTag::Audio(f)
+        Tag::Audio(f)
     }
 }
-impl From<VideoTag> for FlvTag {
+impl From<VideoTag> for Tag {
     fn from(f: VideoTag) -> Self {
-        FlvTag::Video(f)
+        Tag::Video(f)
     }
 }
-impl From<ScriptDataTag> for FlvTag {
+impl From<ScriptDataTag> for Tag {
     fn from(f: ScriptDataTag) -> Self {
-        FlvTag::ScriptData(f)
+        Tag::ScriptData(f)
     }
 }
 
@@ -111,12 +111,12 @@ impl CompositionTimeOffset {
 pub struct StreamId(u32); // u24
 
 #[derive(Debug, Default)]
-pub struct FlvTagDecoder {
+pub struct TagDecoder {
     header: Peekable<TagHeaderDecoder>,
     data: Length<TagDataDecoder>,
 }
-impl Decode for FlvTagDecoder {
-    type Item = FlvTag;
+impl Decode for TagDecoder {
+    type Item = Tag;
 
     fn decode(&mut self, buf: &[u8], eos: Eos) -> Result<usize> {
         let mut offset = 0;
@@ -138,7 +138,7 @@ impl Decode for FlvTagDecoder {
         let header = track!(self.header.finish_decoding())?;
         let data = track!(self.data.finish_decoding())?;
         let tag = match data {
-            TagData::Audio(d) => FlvTag::from(AudioTag {
+            TagData::Audio(d) => Tag::from(AudioTag {
                 timestamp: header.timestamp,
                 stream_id: header.stream_id,
                 sound_format: d.sound_format,
@@ -148,7 +148,7 @@ impl Decode for FlvTagDecoder {
                 aac_packet_type: d.aac_packet_type,
                 data: d.data,
             }),
-            TagData::Video(d) => FlvTag::from(VideoTag {
+            TagData::Video(d) => Tag::from(VideoTag {
                 timestamp: header.timestamp,
                 stream_id: header.stream_id,
                 frame_type: d.frame_type,
@@ -157,7 +157,7 @@ impl Decode for FlvTagDecoder {
                 composition_time: d.composition_time,
                 data: d.data,
             }),
-            TagData::ScriptData(d) => FlvTag::from(ScriptDataTag {
+            TagData::ScriptData(d) => Tag::from(ScriptDataTag {
                 timestamp: header.timestamp,
                 stream_id: header.stream_id,
                 data: d.data,
