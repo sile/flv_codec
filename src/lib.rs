@@ -34,7 +34,6 @@
 //!
 //! - [Video File Format Specification][FLV]
 //!
-//! [bytecodec]: https://crates.io/crates/bytecodec
 //! [FLV]: https://wwwimages2.adobe.com/content/dam/acom/en/devnet/flv/video_file_format_spec_v10.pdf
 //! [examples/]: https://github.com/sile/flv_codec/tree/master/examples
 #![warn(missing_docs)]
