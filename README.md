@@ -1,7 +1,15 @@
 flv_codec
 =========
 
+[![flv_codec](http://meritbadge.herokuapp.com/flv_codec)](https://crates.io/crates/flv_codec)
+[![Documentation](https://docs.rs/flv_codec/badge.svg)](https://docs.rs/flv_codec)
+[![Build Status](https://travis-ci.org/sile/flv_codec.svg?branch=master)](https://travis-ci.org/sile/flv_codec)
+[![Code Coverage](https://codecov.io/gh/sile/flv_codec/branch/master/graph/badge.svg)](https://codecov.io/gh/sile/flv_codec/branch/master)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Decoders and encoders for [FLV] file format.
+
+[Documentation](https://docs.rs/flv_codec)
 
 
 Examples
