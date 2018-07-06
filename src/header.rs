@@ -11,16 +11,14 @@ const HEADER_SIZE: usize = 9;
 const FLAG_AUDIO: u8 = 0b0000_0100;
 const FLAG_VIDEO: u8 = 0b0000_0001;
 
-#[derive(Debug, Default, Clone)]
+/// FLV header.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     /// Whether audio tags are present in the FLV file.
     pub has_audio: bool,
 
     /// Whether video tags are present in the FLV file.
     pub has_video: bool,
-}
-impl Header {
-    pub const SIZE: usize = 9;
 }
 
 #[derive(Debug, Default)]

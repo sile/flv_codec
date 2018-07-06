@@ -5,7 +5,7 @@ extern crate trackable;
 
 use bytecodec::io::{IoDecodeExt, ReadBuf};
 use bytecodec::Decode;
-use flv_codec::FileDecoder;
+use flv_codec::{FileDecoder, Tag};
 use trackable::error::MainError;
 
 fn main() -> Result<(), MainError> {
@@ -30,12 +30,20 @@ fn main() -> Result<(), MainError> {
         if decoder.is_idle() {
             let tag = track!(decoder.finish_decoding())?;
             println!("[[tags]]");
-            println!("type = {:?}", tag.tag_type());
-            println!("timestamp = {:?}", tag.timestamp());
-            println!("stream_id = {:?}", tag.stream_id());
+            println!("type = {:?}", tag_type(&tag));
+            println!("timestamp = {}", tag.timestamp().value());
+            println!("stream_id = {}", tag.stream_id().value());
             println!("");
         }
     }
 
     Ok(())
+}
+
+fn tag_type(tag: &Tag) -> &'static str {
+    match tag {
+        Tag::Audio(_) => "audio",
+        Tag::Video(_) => "video",
+        Tag::ScriptData(_) => "script_data",
+    }
 }

@@ -3,25 +3,29 @@ use bytecodec::combinator::{Length, Peekable};
 use bytecodec::fixnum::{U24beDecoder, U8Decoder};
 use bytecodec::{ByteCount, Decode, DecodeExt, Eos, ErrorKind, Result};
 
+use {
+    AacPacketType, AvcPacketType, CodecId, FrameType, SoundFormat, SoundRate, SoundSize, SoundType,
+    StreamId, TimeOffset, Timestamp,
+};
+
 const TAG_TYPE_AUDIO: u8 = 8;
 const TAG_TYPE_VIDEO: u8 = 9;
 const TAG_TYPE_SCRIPT_DATA: u8 = 18;
 
-#[derive(Debug)]
+/// FLV tag.
+#[derive(Debug, Clone)]
 pub enum Tag {
+    /// Audio tag.
     Audio(AudioTag),
+
+    /// Video tag.
     Video(VideoTag),
+
+    /// Script data tag.
     ScriptData(ScriptDataTag),
 }
 impl Tag {
-    pub fn tag_type(&self) -> TagType {
-        match self {
-            Tag::Audio(_) => TagType::Audio,
-            Tag::Video(_) => TagType::Video,
-            Tag::ScriptData(_) => TagType::ScriptData,
-        }
-    }
-
+    /// Returns the timestamp of the tag.
     pub fn timestamp(&self) -> Timestamp {
         match self {
             Tag::Audio(t) => t.timestamp,
@@ -30,6 +34,7 @@ impl Tag {
         }
     }
 
+    /// Returns the stream identifier of the tag.
     pub fn stream_id(&self) -> StreamId {
         match self {
             Tag::Audio(t) => t.stream_id,
@@ -54,66 +59,100 @@ impl From<ScriptDataTag> for Tag {
     }
 }
 
-#[derive(Debug)]
-pub struct AudioTag {
-    pub timestamp: Timestamp,
-    pub stream_id: StreamId,
-    pub sound_format: SoundFormat,
-    pub sound_rate: SoundRate,
-    pub sound_size: SoundSize,
-    pub sound_type: SoundType,
-    pub aac_packet_type: Option<AacPacketType>,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug)]
-pub struct VideoTag {
-    pub timestamp: Timestamp,
-    pub stream_id: StreamId,
-    pub frame_type: FrameType,
-    pub codec_id: CodecId,
-    pub avc_packet_type: Option<AvcPacketType>,
-    pub composition_time: Option<CompositionTimeOffset>,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug)]
-pub struct ScriptDataTag {
-    pub timestamp: Timestamp,
-    pub stream_id: StreamId,
-    pub data: Vec<u8>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TagType {
+enum TagType {
     Audio = TAG_TYPE_AUDIO as isize,
     Video = TAG_TYPE_VIDEO as isize,
     ScriptData = TAG_TYPE_SCRIPT_DATA as isize,
 }
 
-// TODO: move
-// TODO: to/from Duration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Timestamp(i32);
+/// Audio tag.
+#[derive(Debug, Clone)]
+pub struct AudioTag {
+    /// Timestamp.
+    pub timestamp: Timestamp,
 
-// TODO: move
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct CompositionTimeOffset(i32); // i24
-impl CompositionTimeOffset {
-    fn from_u24(n: u32) -> Self {
-        // TODO: test
-        CompositionTimeOffset(((n << 8) as i32) >> 8)
-    }
+    /// Stream identifier.
+    pub stream_id: StreamId,
+
+    /// Sound format.
+    pub sound_format: SoundFormat,
+
+    /// Sound rate.
+    pub sound_rate: SoundRate,
+
+    /// Sound size.
+    pub sound_size: SoundSize,
+
+    /// Sound yype.
+    pub sound_type: SoundType,
+
+    /// AAC packet type.
+    ///
+    /// This is only present if `sound_format == SoundFormat::Aac`.
+    pub aac_packet_type: Option<AacPacketType>,
+
+    /// Audio data.
+    pub data: Vec<u8>,
 }
 
-// TODO: move
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct StreamId(u32); // u24
+/// Video tag.
+#[derive(Debug, Clone)]
+pub struct VideoTag {
+    /// Timestamp.
+    pub timestamp: Timestamp,
 
+    /// Stream identifier.
+    pub stream_id: StreamId,
+
+    /// Frame type.
+    pub frame_type: FrameType,
+
+    /// Codec identifier.
+    pub codec_id: CodecId,
+
+    /// AAC packet type.
+    ///
+    /// This is only present if `codec_id == CodecId::Avc` and
+    /// `frame_type != FrameType::VideoInfoOrCommandFrame`.
+    pub avc_packet_type: Option<AvcPacketType>,
+
+    /// Composition time offset.
+    ///
+    /// This is only present if `codec_id == CodecId::Avc` and
+    /// `frame_type != FrameType::VideoInfoOrCommandFrame`.
+    pub composition_time: Option<TimeOffset>,
+
+    /// Video data.
+    pub data: Vec<u8>,
+}
+
+/// Script data tag.
+#[derive(Debug, Clone)]
+pub struct ScriptDataTag {
+    /// Timestamp.
+    pub timestamp: Timestamp,
+
+    /// Stream identifier.
+    pub stream_id: StreamId,
+
+    /// [AMF 0] encoded data.
+    ///
+    /// [AMF 0]: https://wwwimages2.adobe.com/content/dam/acom/en/devnet/pdf/amf0-file-format-specification.pdf
+    pub data: Vec<u8>,
+}
+
+/// FLV tag decoder.
 #[derive(Debug, Default)]
 pub struct TagDecoder {
     header: Peekable<TagHeaderDecoder>,
     data: Length<TagDataDecoder>,
+}
+impl TagDecoder {
+    /// Makes a new `TagDecoder` instance.
+    pub fn new() -> Self {
+        TagDecoder::default()
+    }
 }
 impl Decode for TagDecoder {
     type Item = Tag;
@@ -231,12 +270,12 @@ impl Decode for TagHeaderDecoder {
             "Too large FLV tag data size: {}",
             data_size
         );
-        let timestamp = Timestamp((timestamp as i32) | i32::from(timestamp_extended) << 24);
+        let timestamp = Timestamp::new((timestamp as i32) | i32::from(timestamp_extended) << 24);
         Ok(TagHeader {
             tag_type,
             data_size,
             timestamp,
-            stream_id: StreamId(stream_id),
+            stream_id: track!(StreamId::new(stream_id))?,
         })
     }
 
@@ -272,177 +311,12 @@ struct AudioTagData {
 }
 
 #[derive(Debug)]
-pub enum AacPacketType {
-    SequenceHeader = 0,
-    Raw = 1,
-}
-impl AacPacketType {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            0 => AacPacketType::SequenceHeader,
-            1 => AacPacketType::Raw,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown aac packet type: {}", b),
-        })
-    }
-}
-
-#[derive(Debug)]
-pub enum SoundFormat {
-    LinearPcmPlatformEndian = 0,
-    Adpcm = 1,
-    Mp3 = 2,
-    LinearPcmLittleEndian = 3,
-    Nellymoser16khzMono = 4,
-    Nellymoser8KhzMono = 5,
-    Nellymoser = 6,
-    G711AlawLogarithmicPcm = 7,
-    G711MuLawLogarithmicPcm = 8,
-    Aac = 10,
-    Speex = 11,
-    Mp3_8khz = 14,
-    DeviceSpecificSound = 15,
-}
-impl SoundFormat {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            0 => SoundFormat::LinearPcmPlatformEndian,
-            1 => SoundFormat::Adpcm,
-            2 => SoundFormat::Mp3,
-            3 => SoundFormat::LinearPcmLittleEndian,
-            4 => SoundFormat::Nellymoser16khzMono,
-            5 => SoundFormat::Nellymoser8KhzMono,
-            6 => SoundFormat::Nellymoser,
-            7 => SoundFormat::G711AlawLogarithmicPcm,
-            8 => SoundFormat::G711MuLawLogarithmicPcm,
-            10 => SoundFormat::Aac,
-            11 => SoundFormat::Speex,
-            14 => SoundFormat::Mp3_8khz,
-            15 => SoundFormat::DeviceSpecificSound,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown FLV sound format: {}", b),
-        })
-    }
-}
-
-#[derive(Debug)]
-pub enum SoundRate {
-    // 5.5-kHz
-    Khz5 = 0,
-    Khz11 = 1,
-    Khz22 = 2,
-    Khz44 = 3,
-}
-impl SoundRate {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            0 => SoundRate::Khz5,
-            1 => SoundRate::Khz11,
-            2 => SoundRate::Khz22,
-            3 => SoundRate::Khz44,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown FLV sound rate: {}", b),
-        })
-    }
-}
-
-#[derive(Debug)]
-pub enum SoundSize {
-    Bit8 = 0,
-    Bit16 = 1,
-}
-impl SoundSize {
-    fn from_bool(b: bool) -> Self {
-        if b {
-            SoundSize::Bit16
-        } else {
-            SoundSize::Bit8
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum SoundType {
-    Mono = 0,
-    Stereo = 1,
-}
-impl SoundType {
-    fn from_bool(b: bool) -> Self {
-        if b {
-            SoundType::Stereo
-        } else {
-            SoundType::Mono
-        }
-    }
-}
-
-#[derive(Debug)]
 struct VideoTagData {
     frame_type: FrameType,
     codec_id: CodecId,
     avc_packet_type: Option<AvcPacketType>,
-    composition_time: Option<CompositionTimeOffset>,
+    composition_time: Option<TimeOffset>,
     data: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FrameType {
-    KeyFrame = 1,
-    InterFrame = 2,
-    DisposableInterFrame = 3,
-    GeneratedKeyFrame = 4,
-    VideoInfoOrCommandFrame = 5,
-}
-impl FrameType {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            1 => FrameType::KeyFrame,
-            2 => FrameType::InterFrame,
-            3 => FrameType::DisposableInterFrame,
-            4 => FrameType::GeneratedKeyFrame,
-            5 => FrameType::VideoInfoOrCommandFrame,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown video frame type: {}", b),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CodecId {
-    Jpeg = 1,
-    H263 = 2,
-    ScreenVideo = 3,
-    Vp6 = 4,
-    Vp6WithAlpha = 5,
-    ScreenVideoV2 = 6,
-    Avc = 7,
-}
-impl CodecId {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            1 => CodecId::Jpeg,
-            2 => CodecId::H263,
-            3 => CodecId::ScreenVideo,
-            4 => CodecId::Vp6,
-            5 => CodecId::Vp6WithAlpha,
-            6 => CodecId::ScreenVideoV2,
-            7 => CodecId::Avc,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown video codec ID: {}", b),
-        })
-    }
-}
-
-#[derive(Debug)]
-pub enum AvcPacketType {
-    SequenceHeader = 0,
-    NalUnit = 1,
-    EndOfSequence = 2,
-}
-impl AvcPacketType {
-    fn from_u8(b: u8) -> Result<Self> {
-        Ok(match b {
-            0 => AvcPacketType::SequenceHeader,
-            1 => AvcPacketType::NalUnit,
-            2 => AvcPacketType::EndOfSequence,
-            _ => track_panic!(ErrorKind::InvalidInput, "Unknown AVC packet type: {}", b),
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -628,7 +502,7 @@ impl Decode for VideoTagDataDecoder {
         };
         let composition_time = if is_avc_packet {
             let composition_time = track!(self.composition_time.finish_decoding())?;
-            let composition_time = CompositionTimeOffset::from_u24(composition_time);
+            let composition_time = TimeOffset::from_u24(composition_time);
             Some(composition_time)
         } else {
             None
