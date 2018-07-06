@@ -2,6 +2,16 @@
 name = "flv_codec"
 version = "0.1.0"
 authors = ["Takeru Ohta <phjgt308@gmail.com>"]
+description = "Decoders and encoders for FLV file format"
+homepage = "https://github.com/sile/flv_codec"
+repository = "https://github.com/sile/flv_codec"
+readme = "README.md"
+keywords = ["flv"]
+license = "MIT"
+
+[badges]
+travis-ci = {repository = "sile/flv_codec"}
+codecov = {repository = "sile/flv_codec"}
 
 [dependencies]
 bytecodec = "0.4"
