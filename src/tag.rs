@@ -51,6 +51,15 @@ impl Tag {
             Tag::ScriptData(t) => t.stream_id,
         }
     }
+
+    /// Returns the number of bytes required to encode this tag.
+    pub fn tag_size(&self) -> u32 {
+        match self {
+            Tag::Audio(t) => t.tag_size(),
+            Tag::Video(t) => t.tag_size(),
+            Tag::ScriptData(t) => t.tag_size(),
+        }
+    }
 }
 impl From<AudioTag> for Tag {
     fn from(f: AudioTag) -> Self {
@@ -106,6 +115,16 @@ pub struct AudioTag {
     /// Audio data.
     pub data: Vec<u8>,
 }
+impl AudioTag {
+    /// Returns the number of bytes required to encode this tag.
+    pub fn tag_size(&self) -> u32 {
+        let mut size = TagHeader::SIZE + 1 + self.data.len() as u32;
+        if self.aac_packet_type.is_some() {
+            size += 1;
+        }
+        size
+    }
+}
 
 /// Video tag.
 #[derive(Debug, Clone)]
@@ -137,6 +156,16 @@ pub struct VideoTag {
     /// Video data.
     pub data: Vec<u8>,
 }
+impl VideoTag {
+    /// Returns the number of bytes required to encode this tag.
+    pub fn tag_size(&self) -> u32 {
+        let mut size = TagHeader::SIZE + 1 + self.data.len() as u32;
+        if self.avc_packet_type.is_some() {
+            size += 4;
+        }
+        size
+    }
+}
 
 /// Script data tag.
 #[derive(Debug, Clone)]
@@ -151,6 +180,12 @@ pub struct ScriptDataTag {
     ///
     /// [AMF 0]: https://wwwimages2.adobe.com/content/dam/acom/en/devnet/pdf/amf0-file-format-specification.pdf
     pub data: Vec<u8>,
+}
+impl ScriptDataTag {
+    /// Returns the number of bytes required to encode this tag.
+    pub fn tag_size(&self) -> u32 {
+        TagHeader::SIZE + self.data.len() as u32
+    }
 }
 
 /// FLV tag decoder.
@@ -235,6 +270,9 @@ struct TagHeader {
     data_size: u32, // u24
     timestamp: Timestamp,
     stream_id: StreamId,
+}
+impl TagHeader {
+    const SIZE: u32 = 11;
 }
 
 #[derive(Debug, Default)]

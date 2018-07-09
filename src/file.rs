@@ -50,7 +50,8 @@ impl Decode for FileDecoder {
 
     fn finish_decoding(&mut self) -> Result<Self::Item> {
         let tag = track!(self.tag.finish_decoding())?;
-        let _prev_tag_size = track!(self.prev_tag_size.finish_decoding())?; // FIXME: validate size
+        let prev_tag_size = track!(self.prev_tag_size.finish_decoding())?;
+        track_assert_eq!(tag.tag_size(), prev_tag_size, ErrorKind::InvalidInput; tag.kind());
         Ok(tag)
     }
 
