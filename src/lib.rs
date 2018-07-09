@@ -47,7 +47,7 @@ pub use audio::{AacPacketType, SoundFormat, SoundRate, SoundSize, SoundType};
 pub use file::FileDecoder;
 pub use header::Header;
 pub use stream::StreamId;
-pub use tag::{AudioTag, ScriptDataTag, Tag, TagDecoder, VideoTag};
+pub use tag::{AudioTag, ScriptDataTag, Tag, TagDecoder, TagKind, VideoTag};
 pub use time::{TimeOffset, Timestamp};
 pub use video::{AvcPacketType, CodecId, FrameType};
 

@@ -25,6 +25,15 @@ pub enum Tag {
     ScriptData(ScriptDataTag),
 }
 impl Tag {
+    /// Returns the kind of the tag.
+    pub fn kind(&self) -> TagKind {
+        match self {
+            Tag::Audio(_) => TagKind::Audio,
+            Tag::Video(_) => TagKind::Video,
+            Tag::ScriptData(_) => TagKind::ScriptData,
+        }
+    }
+
     /// Returns the timestamp of the tag.
     pub fn timestamp(&self) -> Timestamp {
         match self {
@@ -59,8 +68,10 @@ impl From<ScriptDataTag> for Tag {
     }
 }
 
+/// Tag kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum TagType {
+#[allow(missing_docs)]
+pub enum TagKind {
     Audio = TAG_TYPE_AUDIO as isize,
     Video = TAG_TYPE_VIDEO as isize,
     ScriptData = TAG_TYPE_SCRIPT_DATA as isize,
@@ -163,9 +174,9 @@ impl Decode for TagDecoder {
             bytecodec_try_decode!(self.header, offset, buf, eos);
             let header = self.header.peek().expect("Never fails");
             let data = match header.tag_type {
-                TagType::Audio => TagDataDecoder::Audio(Default::default()),
-                TagType::Video => TagDataDecoder::Video(Default::default()),
-                TagType::ScriptData => TagDataDecoder::ScriptData(Default::default()),
+                TagKind::Audio => TagDataDecoder::Audio(Default::default()),
+                TagKind::Video => TagDataDecoder::Video(Default::default()),
+                TagKind::ScriptData => TagDataDecoder::ScriptData(Default::default()),
             };
             self.data = data.length(u64::from(header.data_size));
         }
@@ -220,7 +231,7 @@ impl Decode for TagDecoder {
 
 #[derive(Debug)]
 struct TagHeader {
-    tag_type: TagType,
+    tag_type: TagKind,
     data_size: u32, // u24
     timestamp: Timestamp,
     stream_id: StreamId,
@@ -255,9 +266,9 @@ impl Decode for TagHeaderDecoder {
         let stream_id = track!(self.stream_id.finish_decoding())?;
 
         let tag_type = match tag_type {
-            TAG_TYPE_AUDIO => TagType::Audio,
-            TAG_TYPE_VIDEO => TagType::Video,
-            TAG_TYPE_SCRIPT_DATA => TagType::ScriptData,
+            TAG_TYPE_AUDIO => TagKind::Audio,
+            TAG_TYPE_VIDEO => TagKind::Video,
+            TAG_TYPE_SCRIPT_DATA => TagKind::ScriptData,
             _ => track_panic!(
                 ErrorKind::InvalidInput,
                 "Unknown FLV tag type: {}",
