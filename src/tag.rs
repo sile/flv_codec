@@ -14,17 +14,17 @@ const TAG_TYPE_SCRIPT_DATA: u8 = 18;
 
 /// FLV tag.
 #[derive(Debug, Clone)]
-pub enum Tag {
+pub enum Tag<Data = Vec<u8>> {
     /// Audio tag.
-    Audio(AudioTag),
+    Audio(AudioTag<Data>),
 
     /// Video tag.
-    Video(VideoTag),
+    Video(VideoTag<Data>),
 
     /// Script data tag.
-    ScriptData(ScriptDataTag),
+    ScriptData(ScriptDataTag<Data>),
 }
-impl Tag {
+impl<Data> Tag<Data> {
     /// Returns the kind of the tag.
     pub fn kind(&self) -> TagKind {
         match self {
@@ -51,7 +51,8 @@ impl Tag {
             Tag::ScriptData(t) => t.stream_id,
         }
     }
-
+}
+impl<Data: AsRef<[u8]>> Tag<Data> {
     /// Returns the number of bytes required to encode this tag.
     pub fn tag_size(&self) -> u32 {
         match self {
@@ -61,18 +62,18 @@ impl Tag {
         }
     }
 }
-impl From<AudioTag> for Tag {
-    fn from(f: AudioTag) -> Self {
+impl<Data> From<AudioTag<Data>> for Tag<Data> {
+    fn from(f: AudioTag<Data>) -> Self {
         Tag::Audio(f)
     }
 }
-impl From<VideoTag> for Tag {
-    fn from(f: VideoTag) -> Self {
+impl<Data> From<VideoTag<Data>> for Tag<Data> {
+    fn from(f: VideoTag<Data>) -> Self {
         Tag::Video(f)
     }
 }
-impl From<ScriptDataTag> for Tag {
-    fn from(f: ScriptDataTag) -> Self {
+impl<Data> From<ScriptDataTag<Data>> for Tag<Data> {
+    fn from(f: ScriptDataTag<Data>) -> Self {
         Tag::ScriptData(f)
     }
 }
@@ -88,7 +89,7 @@ pub enum TagKind {
 
 /// Audio tag.
 #[derive(Debug, Clone)]
-pub struct AudioTag {
+pub struct AudioTag<Data = Vec<u8>> {
     /// Timestamp.
     pub timestamp: Timestamp,
 
@@ -113,12 +114,12 @@ pub struct AudioTag {
     pub aac_packet_type: Option<AacPacketType>,
 
     /// Audio data.
-    pub data: Vec<u8>,
+    pub data: Data,
 }
-impl AudioTag {
+impl<Data: AsRef<[u8]>> AudioTag<Data> {
     /// Returns the number of bytes required to encode this tag.
     pub fn tag_size(&self) -> u32 {
-        let mut size = TagHeader::SIZE + 1 + self.data.len() as u32;
+        let mut size = TagHeader::SIZE + 1 + self.data.as_ref().len() as u32;
         if self.aac_packet_type.is_some() {
             size += 1;
         }
@@ -128,7 +129,7 @@ impl AudioTag {
 
 /// Video tag.
 #[derive(Debug, Clone)]
-pub struct VideoTag {
+pub struct VideoTag<Data = Vec<u8>> {
     /// Timestamp.
     pub timestamp: Timestamp,
 
@@ -154,12 +155,12 @@ pub struct VideoTag {
     pub composition_time: Option<TimeOffset>,
 
     /// Video data.
-    pub data: Vec<u8>,
+    pub data: Data,
 }
-impl VideoTag {
+impl<Data: AsRef<[u8]>> VideoTag<Data> {
     /// Returns the number of bytes required to encode this tag.
     pub fn tag_size(&self) -> u32 {
-        let mut size = TagHeader::SIZE + 1 + self.data.len() as u32;
+        let mut size = TagHeader::SIZE + 1 + self.data.as_ref().len() as u32;
         if self.avc_packet_type.is_some() {
             size += 4;
         }
@@ -169,7 +170,7 @@ impl VideoTag {
 
 /// Script data tag.
 #[derive(Debug, Clone)]
-pub struct ScriptDataTag {
+pub struct ScriptDataTag<Data = Vec<u8>> {
     /// Timestamp.
     pub timestamp: Timestamp,
 
@@ -179,12 +180,12 @@ pub struct ScriptDataTag {
     /// [AMF 0] encoded data.
     ///
     /// [AMF 0]: https://wwwimages2.adobe.com/content/dam/acom/en/devnet/pdf/amf0-file-format-specification.pdf
-    pub data: Vec<u8>,
+    pub data: Data,
 }
-impl ScriptDataTag {
+impl<Data: AsRef<[u8]>> ScriptDataTag<Data> {
     /// Returns the number of bytes required to encode this tag.
     pub fn tag_size(&self) -> u32 {
-        TagHeader::SIZE + self.data.len() as u32
+        TagHeader::SIZE + self.data.as_ref().len() as u32
     }
 }
 
