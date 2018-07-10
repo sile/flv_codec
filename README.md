@@ -16,8 +16,6 @@ Examples
 --------
 
 ```rust
-# extern crate bytecodec;
-# extern crate flv_codec;
 use bytecodec::io::IoDecodeExt;
 use flv_codec::{FileDecoder, Header, Tag};
 
