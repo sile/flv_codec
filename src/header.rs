@@ -1,8 +1,8 @@
-use bytecodec::bytes::CopyableBytesDecoder;
+use bytecodec::bytes::{BytesEncoder, CopyableBytesDecoder};
 use bytecodec::combinator::{Length, Peekable};
-use bytecodec::fixnum::{U32beDecoder, U8Decoder};
+use bytecodec::fixnum::{U32beDecoder, U32beEncoder, U8Decoder, U8Encoder};
 use bytecodec::padding::PaddingDecoder;
-use bytecodec::{ByteCount, Decode, Eos, ErrorKind, Result};
+use bytecodec::{ByteCount, Decode, Encode, Eos, ErrorKind, Result, SizedEncode};
 
 const SIGNATURE: [u8; 3] = *b"FLV";
 const VERSION: u8 = 1;
@@ -19,6 +19,54 @@ pub struct Header {
 
     /// Whether video tags are present in the FLV file.
     pub has_video: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct HeaderEncoder {
+    signature: BytesEncoder<[u8; 3]>,
+    version: U8Encoder,
+    flags: U8Encoder,
+    data_offset: U32beEncoder,
+}
+impl Encode for HeaderEncoder {
+    type Item = Header;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.signature, offset, buf, eos);
+        bytecodec_try_encode!(self.version, offset, buf, eos);
+        bytecodec_try_encode!(self.flags, offset, buf, eos);
+        bytecodec_try_encode!(self.data_offset, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        let flags = (item.has_audio as u8 * FLAG_AUDIO) | (item.has_video as u8 * FLAG_VIDEO);
+        track!(self.signature.start_encoding(SIGNATURE))?;
+        track!(self.version.start_encoding(VERSION))?;
+        track!(self.flags.start_encoding(flags))?;
+        track!(self.data_offset.start_encoding(HEADER_SIZE as u32))?;
+        Ok(())
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.signature.is_idle()
+            && self.version.is_idle()
+            && self.flags.is_idle()
+            && self.data_offset.is_idle()
+    }
+}
+impl SizedEncode for HeaderEncoder {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.signature.exact_requiring_bytes()
+            + self.version.exact_requiring_bytes()
+            + self.flags.exact_requiring_bytes()
+            + self.data_offset.exact_requiring_bytes()
+    }
 }
 
 #[derive(Debug, Default)]

@@ -1,7 +1,7 @@
-use bytecodec::bytes::RemainingBytesDecoder;
+use bytecodec::bytes::{BytesEncoder, RemainingBytesDecoder};
 use bytecodec::combinator::{Length, Peekable};
-use bytecodec::fixnum::{U24beDecoder, U8Decoder};
-use bytecodec::{ByteCount, Decode, DecodeExt, Eos, ErrorKind, Result};
+use bytecodec::fixnum::{U24beDecoder, U24beEncoder, U32beEncoder, U8Decoder, U8Encoder};
+use bytecodec::{ByteCount, Decode, DecodeExt, Encode, Eos, ErrorKind, Result, SizedEncode};
 
 use {
     AacPacketType, AvcPacketType, CodecId, FrameType, SoundFormat, SoundRate, SoundSize, SoundType,
@@ -596,5 +596,317 @@ impl Decode for ScriptDataTagDataDecoder {
 
     fn requiring_bytes(&self) -> ByteCount {
         self.0.requiring_bytes()
+    }
+}
+
+/// FLV tag encoder.
+#[derive(Debug)]
+pub struct TagEncoder<Data> {
+    audio: AudioTagEncoder<Data>,
+    video: VideoTagEncoder<Data>,
+    script_data: ScriptDataTagEncoder<Data>,
+}
+impl<Data> TagEncoder<Data> {
+    /// Makes a new `TagEncoder` instance.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+impl<Data: AsRef<[u8]>> Encode for TagEncoder<Data> {
+    type Item = Tag<Data>;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.audio, offset, buf, eos);
+        bytecodec_try_encode!(self.video, offset, buf, eos);
+        bytecodec_try_encode!(self.script_data, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        match item {
+            Tag::Audio(t) => track!(self.audio.start_encoding(t)),
+            Tag::Video(t) => track!(self.video.start_encoding(t)),
+            Tag::ScriptData(t) => track!(self.script_data.start_encoding(t)),
+        }
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.audio.is_idle() && self.video.is_idle() && self.script_data.is_idle()
+    }
+}
+impl<Data: AsRef<[u8]>> SizedEncode for TagEncoder<Data> {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.audio.exact_requiring_bytes()
+            + self.video.exact_requiring_bytes()
+            + self.script_data.exact_requiring_bytes()
+    }
+}
+impl<Data> Default for TagEncoder<Data> {
+    fn default() -> Self {
+        TagEncoder {
+            audio: AudioTagEncoder::default(),
+            video: VideoTagEncoder::default(),
+            script_data: ScriptDataTagEncoder::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AudioTagEncoder<Data> {
+    header: TagHeaderEncoder,
+    audio_specific: U8Encoder,
+    aac_specific: U8Encoder,
+    data: BytesEncoder<Data>,
+}
+impl<Data: AsRef<[u8]>> Encode for AudioTagEncoder<Data> {
+    type Item = AudioTag<Data>;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.header, offset, buf, eos);
+        bytecodec_try_encode!(self.audio_specific, offset, buf, eos);
+        bytecodec_try_encode!(self.aac_specific, offset, buf, eos);
+        bytecodec_try_encode!(self.data, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        let audio_specific = ((item.sound_format as u8) << 4)
+            | ((item.sound_rate as u8) << 2)
+            | ((item.sound_size as u8) << 1)
+            | (item.sound_type as u8);
+        track!(self.audio_specific.start_encoding(audio_specific))?;
+        if let Some(packet_type) = item.aac_packet_type {
+            track!(self.aac_specific.start_encoding(packet_type as u8))?;
+        }
+        track!(self.data.start_encoding(item.data))?;
+        let data_size = self.audio_specific.exact_requiring_bytes()
+            + self.aac_specific.exact_requiring_bytes()
+            + self.data.exact_requiring_bytes();
+        track_assert!(data_size <= 0xFF_FFFF, ErrorKind::InvalidInput; data_size);
+
+        let header = TagHeader {
+            tag_type: TagKind::Audio,
+            data_size: data_size as u32,
+            timestamp: item.timestamp,
+            stream_id: item.stream_id,
+        };
+        track!(self.header.start_encoding(header))?;
+        Ok(())
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.header.is_idle()
+            && self.audio_specific.is_idle()
+            && self.aac_specific.is_idle()
+            && self.data.is_idle()
+    }
+}
+impl<Data: AsRef<[u8]>> SizedEncode for AudioTagEncoder<Data> {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.header.exact_requiring_bytes()
+            + self.audio_specific.exact_requiring_bytes()
+            + self.aac_specific.exact_requiring_bytes()
+            + self.data.exact_requiring_bytes()
+    }
+}
+impl<Data> Default for AudioTagEncoder<Data> {
+    fn default() -> Self {
+        AudioTagEncoder {
+            header: TagHeaderEncoder::default(),
+            audio_specific: U8Encoder::default(),
+            aac_specific: U8Encoder::default(),
+            data: BytesEncoder::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct VideoTagEncoder<Data> {
+    header: TagHeaderEncoder,
+    video_specific: U8Encoder,
+    avc_specific: U32beEncoder,
+    data: BytesEncoder<Data>,
+}
+impl<Data: AsRef<[u8]>> Encode for VideoTagEncoder<Data> {
+    type Item = VideoTag<Data>;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.header, offset, buf, eos);
+        bytecodec_try_encode!(self.video_specific, offset, buf, eos);
+        bytecodec_try_encode!(self.avc_specific, offset, buf, eos);
+        bytecodec_try_encode!(self.data, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        let video_specific = ((item.frame_type as u8) << 4) | (item.codec_id as u8);
+        track!(self.video_specific.start_encoding(video_specific))?;
+        if let Some(packet_type) = item.avc_packet_type {
+            let ct = track_assert_some!(item.composition_time, ErrorKind::InvalidInput);
+            let avc_specific = ((packet_type as u32) << 24) | ((ct.value() as u32) & 0xFF_FFFF);
+            track!(self.avc_specific.start_encoding(avc_specific))?;
+        }
+        track!(self.data.start_encoding(item.data))?;
+        let data_size = self.video_specific.exact_requiring_bytes()
+            + self.avc_specific.exact_requiring_bytes()
+            + self.data.exact_requiring_bytes();
+        track_assert!(data_size <= 0xFF_FFFF, ErrorKind::InvalidInput; data_size);
+
+        let header = TagHeader {
+            tag_type: TagKind::Video,
+            data_size: data_size as u32,
+            timestamp: item.timestamp,
+            stream_id: item.stream_id,
+        };
+        track!(self.header.start_encoding(header))?;
+        Ok(())
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.header.is_idle()
+            && self.video_specific.is_idle()
+            && self.avc_specific.is_idle()
+            && self.data.is_idle()
+    }
+}
+impl<Data: AsRef<[u8]>> SizedEncode for VideoTagEncoder<Data> {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.header.exact_requiring_bytes()
+            + self.video_specific.exact_requiring_bytes()
+            + self.avc_specific.exact_requiring_bytes()
+            + self.data.exact_requiring_bytes()
+    }
+}
+impl<Data> Default for VideoTagEncoder<Data> {
+    fn default() -> Self {
+        VideoTagEncoder {
+            header: TagHeaderEncoder::default(),
+            video_specific: U8Encoder::default(),
+            avc_specific: U32beEncoder::default(),
+            data: BytesEncoder::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ScriptDataTagEncoder<Data> {
+    header: TagHeaderEncoder,
+    data: BytesEncoder<Data>,
+}
+impl<Data: AsRef<[u8]>> Encode for ScriptDataTagEncoder<Data> {
+    type Item = ScriptDataTag<Data>;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.header, offset, buf, eos);
+        bytecodec_try_encode!(self.data, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        track!(self.data.start_encoding(item.data))?;
+        let data_size = self.data.exact_requiring_bytes();
+        track_assert!(data_size <= 0xFF_FFFF, ErrorKind::InvalidInput; data_size);
+
+        let header = TagHeader {
+            tag_type: TagKind::ScriptData,
+            data_size: data_size as u32,
+            timestamp: item.timestamp,
+            stream_id: item.stream_id,
+        };
+        track!(self.header.start_encoding(header))?;
+        Ok(())
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.header.is_idle() && self.data.is_idle()
+    }
+}
+impl<Data: AsRef<[u8]>> SizedEncode for ScriptDataTagEncoder<Data> {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.header.exact_requiring_bytes() + self.data.exact_requiring_bytes()
+    }
+}
+impl<Data> Default for ScriptDataTagEncoder<Data> {
+    fn default() -> Self {
+        ScriptDataTagEncoder {
+            header: TagHeaderEncoder::default(),
+            data: BytesEncoder::default(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct TagHeaderEncoder {
+    tag_type: U8Encoder,
+    data_size: U24beEncoder,
+    timestamp: U24beEncoder,
+    timestamp_extended: U8Encoder,
+    stream_id: U24beEncoder,
+}
+impl Encode for TagHeaderEncoder {
+    type Item = TagHeader;
+
+    fn encode(&mut self, buf: &mut [u8], eos: Eos) -> Result<usize> {
+        let mut offset = 0;
+        bytecodec_try_encode!(self.tag_type, offset, buf, eos);
+        bytecodec_try_encode!(self.data_size, offset, buf, eos);
+        bytecodec_try_encode!(self.timestamp, offset, buf, eos);
+        bytecodec_try_encode!(self.timestamp_extended, offset, buf, eos);
+        bytecodec_try_encode!(self.stream_id, offset, buf, eos);
+        Ok(offset)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> Result<()> {
+        let timestamp = item.timestamp.value() as u32;
+        track!(self.tag_type.start_encoding(item.tag_type as u8))?;
+        track!(self.data_size.start_encoding(item.data_size))?;
+        track!(self.timestamp.start_encoding(timestamp & 0xFF_FFFF))?;
+        track!(
+            self.timestamp_extended
+                .start_encoding((timestamp >> 24) as u8)
+        )?;
+        track!(self.stream_id.start_encoding(item.stream_id.value()))?;
+        Ok(())
+    }
+
+    fn requiring_bytes(&self) -> ByteCount {
+        ByteCount::Finite(self.exact_requiring_bytes())
+    }
+
+    fn is_idle(&self) -> bool {
+        self.tag_type.is_idle()
+            && self.data_size.is_idle()
+            && self.timestamp.is_idle()
+            && self.timestamp_extended.is_idle()
+            && self.stream_id.is_idle()
+    }
+}
+impl SizedEncode for TagHeaderEncoder {
+    fn exact_requiring_bytes(&self) -> u64 {
+        self.tag_type.exact_requiring_bytes()
+            + self.data_size.exact_requiring_bytes()
+            + self.timestamp.exact_requiring_bytes()
+            + self.timestamp_extended.exact_requiring_bytes()
+            + self.stream_id.exact_requiring_bytes()
     }
 }

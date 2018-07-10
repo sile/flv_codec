@@ -44,10 +44,10 @@ extern crate bytecodec;
 extern crate trackable;
 
 pub use audio::{AacPacketType, SoundFormat, SoundRate, SoundSize, SoundType};
-pub use file::FileDecoder;
+pub use file::{FileDecoder, FileEncoder};
 pub use header::Header;
 pub use stream::StreamId;
-pub use tag::{AudioTag, ScriptDataTag, Tag, TagDecoder, TagKind, VideoTag};
+pub use tag::{AudioTag, ScriptDataTag, Tag, TagDecoder, TagEncoder, TagKind, VideoTag};
 pub use time::{TimeOffset, Timestamp};
 pub use video::{AvcPacketType, CodecId, FrameType};
 
@@ -61,7 +61,8 @@ mod video;
 
 #[cfg(test)]
 mod test {
-    use bytecodec::io::IoDecodeExt;
+    use bytecodec::io::{IoDecodeExt, IoEncodeExt};
+    use bytecodec::Encode;
 
     use super::*;
 
@@ -100,5 +101,20 @@ mod test {
         } else {
             panic!();
         }
+    }
+
+    #[test]
+    fn file_encoder_works() {
+        let mut flv = &include_bytes!("../black_silent.flv")[..];
+        let mut buf = Vec::new();
+        let mut decoder = FileDecoder::default();
+        let mut encoder = FileEncoder::default();
+
+        while !flv.is_empty() {
+            let tag = track_try_unwrap!(decoder.decode_exact(&mut flv));
+            track_try_unwrap!(encoder.start_encoding(tag));
+            track_try_unwrap!(encoder.encode_all(&mut buf));
+        }
+        assert_eq!(buf, &include_bytes!("../black_silent.flv")[..]);
     }
 }
